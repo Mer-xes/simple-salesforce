@@ -143,6 +143,9 @@ class Salesforce:
             # interface for example) extract the hostname (which we rely on)
             if instance_url is not None:
                 self.sf_instance = urlparse(instance_url).hostname
+                port = urlparse(instance_url).port
+                if port not in (None, 443):
+                    self.sf_instance += ':' + str(port)
             else:
                 self.sf_instance = instance
 
@@ -221,7 +224,7 @@ class Salesforce:
         return json_result
 
     def is_sandbox(self):
-        """After connection returns is the organization is a sandbox"""
+        """After connection returns is the organization in a sandbox"""
         is_sandbox = None
         if self.session_id:
             is_sandbox = self.query_all("SELECT IsSandbox "
@@ -279,17 +282,17 @@ class Salesforce:
 
         result = self._call_salesforce('POST', url, data=json.dumps(params))
 
+        if result.status_code == 204:
+            return None
+
         # salesforce return 204 No Content when the request is successful
-        if result.status_code != 200 and result.status_code != 204:
+        if result.status_code != 200:
             raise SalesforceGeneralError(url,
                                          result.status_code,
                                          'User',
                                          result.content)
-        json_result = result.json(object_pairs_hook=OrderedDict)
-        if len(json_result) == 0:
-            return None
+        return result.json(object_pairs_hook=OrderedDict)
 
-        return json_result
 
     # Generic Rest Function
     def restful(self, path, params=None, method='GET', **kwargs):
@@ -531,7 +534,7 @@ class Salesforce:
         Returns a `requests.result` object.
         """
         headers = self.headers.copy()
-        additional_headers = kwargs.pop('headers', dict())
+        additional_headers = kwargs.pop('headers', {})
         headers.update(additional_headers)
 
         result = self.session.request(
@@ -900,8 +903,8 @@ class SFType:
             'Authorization': 'Bearer ' + self.session_id,
             'X-PrettyPrint': '1'
         }
-        additional_headers = kwargs.pop('headers', dict())
-        headers.update(additional_headers or dict())
+        additional_headers = kwargs.pop('headers', {})
+        headers.update(additional_headers or {})
         result = self.session.request(method, url, headers=headers, **kwargs)
 
         if result.status_code >= 300:
